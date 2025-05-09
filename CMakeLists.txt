@@ -1,5 +1,11 @@
 cmake_minimum_required(VERSION 3.7)
 
+set(CMAKE_LIBRARY_ARCHITECTURE "i386-linux-gnu")
+set(CMAKE_SYSTEM_NAME Linux)
+set(CMAKE_SYSTEM_PROCESSOR i386)
+
+set(ENV{PKG_CONFIG_PATH} "$ENV{PKG_CONFIG_PATH}:/usr/lib/i386-linux-gnu/pkgconfig")
+
 include(CMake/out_of_tree.cmake)
 
 project(devilutionX

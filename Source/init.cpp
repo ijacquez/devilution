@@ -300,8 +300,7 @@ HANDLE init_test_access(char *mpq_path, char *mpq_name, char *reg_loc, int flags
 		*last_slash_pos = '\0';
 	init_strip_trailing_slash(Filename);
 #endif
-	strcpy(mpq_path, Buffer);
-	strcat(mpq_path, mpq_name);
+	snprintf(mpq_path, MAX_PATH, "%s/%s", Buffer, mpq_name);
 		 
 #ifdef COPYPROT
 	if (SFileOpenArchive(mpq_path, flags, fs, &archive))

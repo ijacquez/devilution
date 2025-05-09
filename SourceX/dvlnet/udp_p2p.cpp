@@ -14,7 +14,10 @@ int udp_p2p::join(std::string addrstr, std::string passwd)
 {
 	return 0;
 }
- 
+
+void udp_p2p::poll()
+{
+}
 
 }  // namespace net
 }  // namespace dvl

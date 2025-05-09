@@ -122,11 +122,11 @@ void pfile_get_save_path(char *pszBuf, DWORD dwBufSize, DWORD save_num)
 	DWORD plen;
 	char *s;
 	char path[MAX_PATH];
-	const char *fmt = "\\multi_%d.sv";
+	const char *fmt = "%s/multi_%d.sv";
 
 #ifndef SWITCH	
 	if (gbMaxPlayers <= 1)
-		fmt = "\\single_%d.sv";
+		fmt = "%s/single_%d.sv";
 #else
 		if (gbMaxPlayers <= 1)
 		fmt = "single_%d.sv";
@@ -135,7 +135,7 @@ void pfile_get_save_path(char *pszBuf, DWORD dwBufSize, DWORD save_num)
 #ifndef SWITCH	
 	// BUGFIX: ignores dwBufSize and uses MAX_PATH instead
 	plen = GetModuleFileName(ghInst, pszBuf, MAX_PATH);
-	s = strrchr(pszBuf, '\\');
+	s = strrchr(pszBuf, '/');
 	if (s)
 		*s = '\0';
 
@@ -143,7 +143,7 @@ void pfile_get_save_path(char *pszBuf, DWORD dwBufSize, DWORD save_num)
 		app_fatal("Unable to get save directory");
 
 #endif	
-	sprintf(path, fmt, save_num);
+	sprintf(path, fmt, pszBuf, save_num);
 	strcpy(pszBuf, path);
 }
 

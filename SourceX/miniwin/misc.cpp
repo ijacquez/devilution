@@ -155,7 +155,7 @@ DWORD GetModuleFileNameA(HMODULE hModule, LPSTR lpFilename, DWORD nSize)
 
 	DWORD len = strlen(lpFilename);
 
-	lpFilename[len - 1] = '\\';
+	lpFilename[len - 1] = '/';
 
 	return len;
 #else

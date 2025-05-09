@@ -38,6 +38,17 @@
 
 There are lots of bugs. Check issues on the code repo.
 
+### Compiling on Linux (to Linux)
+
+```
+host$ cd docker/ubuntu
+host$ docker build --tag devilution:latest .
+host$ docker run -i -t -w /src --volume=.:/src devilution:latest --name=devilution /bin/bash
+
+docker# cd docker
+docker# bash build.sh
+```
+
 ### Compiling On Linux
 ```install devkitproA64, libzip, libpng, libjpeg, switch-freetype, switch-mesa, switch-glad, switch-glm, switch-sdl2, switch-sdl2_ttf, switch-sdl2_mixer, switch-libvorbis, switch-libmikmod```
 
@@ -60,6 +71,17 @@ There are lots of bugs. Check issues on the code repo.
 - ```make```
 
 - .nro lives in release. Test with an emulator (RyuJinx) or real hardware.
+
+### Dependencies required to run on Linux
+
+```
+sudo apt install libsdl2-mixer-2.0.0:i386 \
+    libsdl2-mixer-2.0-0 \
+    libsdl2-mixer-2.0-0:i386 \
+    libsdl2-ttf-2.0-0:i386 \
+    libsdl2-image-2.0-0:i386 \
+    libsodium23:i386
+```
 
 ### Credits
 - Reverse engineered by GalaXyHaXz in 2018
