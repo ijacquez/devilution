@@ -3,6 +3,8 @@
 *.asm
 *.idb
 
+compile_commands.json
+
 # macOS
 .DS_Store
 
@@ -19,6 +21,15 @@ comparer-config.toml
 /build/
 /build32/
 .vscode/tasks.json
+
+
+# When building through Docker container
+/docker/devilutionx
+/docker/cmake_install.cmake
+/docker/Makefile
+/docker/CMakeFiles/
+/docker/CMakeCache.txt
+/docker/*.a
 
 # ELF object file.
 *.o
