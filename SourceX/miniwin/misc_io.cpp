@@ -1,12 +1,8 @@
-#include <cstdio>
-#include <set>
-#include <string>
-#include <iterator>
-#include <vector>
-#include <algorithm>
-#include <fstream>
-#include <memory>
-#include <stdexcept>
+#include <sys/stat.h>
+#include <sys/param.h>
+#include <stdio.h>
+#include <unistd.h>
+
 
 #include "devilution.h"
 #include "stubs.h"
@@ -14,12 +10,17 @@
 namespace dvl {
 
 struct memfile {
-	std::string path;
-	std::vector<char> buf;
-	std::size_t pos = 0;
+	char* path = nullptr;
+	char* buf = nullptr;
+	char* buf_top = nullptr;
+	size_t buf_size = 0;
+	size_t pos = 0;
+
+	struct memfile* next = nullptr;
 };
 
-static std::set<memfile*> files;
+static memfile* files;
+static memfile* files_tail;
 
 HANDLE CreateFileA(LPCSTR lpFileName, DWORD dwDesiredAccess, DWORD dwShareMode,
                    LPSECURITY_ATTRIBUTES lpSecurityAttributes, DWORD dwCreationDisposition,
@@ -33,18 +34,35 @@ HANDLE CreateFileA(LPCSTR lpFileName, DWORD dwDesiredAccess, DWORD dwShareMode,
 	file->path = name;
 	if (dwCreationDisposition == DVL_OPEN_EXISTING) {
 		// read contents of existing file into buffer
-		std::ifstream filestream(file->path, std::ios::binary);
-		if(!filestream.fail()) {
-			file->buf.insert(file->buf.begin(),
-			                 std::istreambuf_iterator<char>(filestream),
-			                 std::istreambuf_iterator<char>());
-		}
+		FILE* fp = fopen(file->path, "rb");
+		assert(fp != nullptr);
+
+		const int fd = fileno(fp);
+		struct stat stat_buffer;
+		fstat(fd, &stat_buffer);
+
+		file->buf = static_cast<char*>(malloc(stat_buffer.st_size));
+		file->buf_top = file->buf;
+		assert(file->buf != nullptr);
+
+		file->buf_size = stat_buffer.st_size;
+
+		const size_t bytes_read = fread(file->buf, 1, file->buf_size, fp);
+
+		assert(bytes_read == file->buf_size);
+		fclose(fp);
 	} else if (dwCreationDisposition == DVL_CREATE_ALWAYS) {
 		// start with empty file
 	} else {
 		UNIMPLEMENTED();
 	}
-	files.insert(file);
+	if (files == nullptr) {
+		files = file;
+		files_tail = file;
+	} else {
+		files_tail->next = file;
+		files_tail = file;
+	}
 	return file;
 }
 
@@ -53,9 +71,13 @@ WINBOOL ReadFile(HANDLE hFile, LPVOID lpBuffer, DWORD nNumberOfBytesToRead, LPDW
 {
 	memfile* file = static_cast<memfile*>(hFile);
 	UNIMPLEMENTED_UNLESS(!lpOverlapped);
-	size_t len = std::min<size_t>(file->buf.size() - file->pos, nNumberOfBytesToRead);
-	std::copy(file->buf.begin() + file->pos, file->buf.begin() + file->pos + len, static_cast<char*>(lpBuffer));
+	const size_t len = MIN(file->buf_size - file->pos, nNumberOfBytesToRead);
+
+	const char * const read_buffer = file->buf + file->pos;
+
+	memcpy(lpBuffer, read_buffer, len);
 	file->pos += len;
+
 	*lpNumberOfBytesRead = len;
 	return true;
 }
@@ -63,7 +85,7 @@ WINBOOL ReadFile(HANDLE hFile, LPVOID lpBuffer, DWORD nNumberOfBytesToRead, LPDW
 DWORD GetFileSize(HANDLE hFile, LPDWORD lpFileSizeHigh)
 {
 	memfile* file = static_cast<memfile*>(hFile);
-	return file->buf.size();
+	return file->buf_size;
 }
 
 WINBOOL WriteFile(HANDLE hFile, LPCVOID lpBuffer, DWORD nNumberOfBytesToWrite,
@@ -73,11 +95,19 @@ WINBOOL WriteFile(HANDLE hFile, LPCVOID lpBuffer, DWORD nNumberOfBytesToWrite,
 	UNIMPLEMENTED_UNLESS(!lpOverlapped);
 	if(!nNumberOfBytesToWrite)
 		return true;
-	if(file->buf.size() < file->pos + nNumberOfBytesToWrite)
-		file->buf.resize(file->pos + nNumberOfBytesToWrite);
-	std::copy(static_cast<const char*>(lpBuffer),
-	          static_cast<const char*>(lpBuffer) + nNumberOfBytesToWrite,
-	          file->buf.begin() + file->pos);
+
+	if(file->buf_size < file->pos + nNumberOfBytesToWrite) {
+		const size_t buffer_size = file->pos + nNumberOfBytesToWrite;
+		file->buf = static_cast<char*>(realloc(file->buf_top, buffer_size));
+		file->buf_top = file->buf;
+		assert(file->buf != nullptr);
+
+		file->buf_size = buffer_size;
+	}
+
+	void* const write_buf = file->buf + file->pos;
+	memcpy(write_buf, lpBuffer, nNumberOfBytesToWrite);
+
 	file->pos += nNumberOfBytesToWrite;
 	*lpNumberOfBytesWritten = nNumberOfBytesToWrite;
 	return true;
@@ -94,15 +124,25 @@ DWORD SetFilePointer(HANDLE hFile, LONG lDistanceToMove, PLONG lpDistanceToMoveH
 	} else {
 		UNIMPLEMENTED();
 	}
-	if(file->buf.size() < file->pos + 1)
-		file->buf.resize(file->pos + 1);
+
+	if(file->buf_size < file->pos + 1) {
+		const size_t buffer_size = file->pos + 1;
+
+		file->buf = static_cast<char*>(realloc(file->buf_top, buffer_size));
+		assert(file->buf != nullptr);
+
+		file->buf_top = file->buf;
+		file->buf_size = buffer_size;
+	}
+
 	return file->pos;
 }
 
 WINBOOL SetEndOfFile(HANDLE hFile)
 {
 	memfile* file = static_cast<memfile*>(hFile);
-	file->buf.erase(file->buf.begin() + file->pos, file->buf.end());
+	file->buf = file->buf + file->pos;
+
 	return true;
 }
 
@@ -110,8 +150,8 @@ DWORD GetFileAttributesA(LPCSTR lpFileName)
 {
 	char name[DVL_MAX_PATH];
 	TranslateFileName(name, sizeof(name), lpFileName);
-	std::ifstream filestream(name, std::ios::binary);
-	if (filestream.fail()) {
+
+	if (access(name, F_OK) != 0) {
 		SetLastError(DVL_ERROR_FILE_NOT_FOUND);
 		return (DWORD)-1;
 	}
@@ -126,30 +166,61 @@ WINBOOL SetFileAttributesA(LPCSTR lpFileName, DWORD dwFileAttributes)
 WINBOOL CloseHandle(HANDLE hObject)
 {
 	memfile* file = static_cast<memfile*>(hObject);
-	if (files.find(file) == files.end())
-		return true;
-	std::unique_ptr<memfile> ufile(file);  // ensure that delete file is
-	                                       // called on returning
-	files.erase(file);
-	try {
-		//svcOutputDebugString(file->path.c_str(),200);
-		std::ofstream filestream(file->path, std::ios::binary | std::ios::trunc);
-		if (filestream.fail())
-			throw std::runtime_error("ofstream");
-		filestream.write(file->buf.data(), file->buf.size());
-		if (filestream.fail())
-			throw std::runtime_error("ofstream::write");
-		filestream.close();
-		//std::remove(file->path.c_str());
-		//svcOutputDebugString(file->path.c_str(),200);
-		//if (std::rename((file->path + ".tmp").c_str(), file->path.c_str()))
-		//	throw std::runtime_error("rename");
-		return true;
-	} catch (std::runtime_error e) {
-		// log
-		DialogBoxParam(ghInst, DVL_MAKEINTRESOURCE(IDD_DIALOG7), ghMainWnd, (DLGPROC)FuncDlg, (LPARAM)file->path.c_str());
-		return false;
+
+	memfile* p = files;
+	memfile* p_prev = nullptr;
+	bool found_handle = false;
+	while (p != nullptr) {
+		if (p == file) {
+			found_handle = true;
+
+			if (p_prev == nullptr) {
+				files = p->next;
+			} else {
+				p_prev->next = p->next;
+				free(p);
+			}
+
+			if (p->next == nullptr) {
+				files_tail = p;
+			}
+			break;
+		}
+
+		p_prev = p;
+		p = p->next;
 	}
+
+	if (!found_handle)
+		return true;
+
+	//svcOutputDebugString(file->path.c_str(),200);
+	truncate(file->path, 0);
+	FILE* fp = fopen(file->path, "wb");
+	if (fp == nullptr) {
+		DialogBoxParam(ghInst, DVL_MAKEINTRESOURCE(IDD_DIALOG7), ghMainWnd, (DLGPROC)FuncDlg, (LPARAM)file->path);
+	}
+	assert(fp != nullptr);
+
+	const size_t write_size = fwrite(file->buf, 1, file->buf_size, fp);
+	fclose(fp);
+
+	if (write_size != file->buf_size) {
+		DialogBoxParam(ghInst, DVL_MAKEINTRESOURCE(IDD_DIALOG7), ghMainWnd, (DLGPROC)FuncDlg, (LPARAM)file->path);
+	}
+	assert(write_size == file->buf_size);
+
+	free(file->buf_top);
+	file->buf_top = nullptr;
+	file->buf = nullptr;
+
+	//std::remove(file->path.c_str());
+	//svcOutputDebugString(file->path.c_str(),200);
+	//if (std::rename((file->path + ".tmp").c_str(), file->path.c_str()))
+	//	throw std::runtime_error("rename");
+	free(file);
+
+	return true;
 }
 
 }  // namespace dvl
