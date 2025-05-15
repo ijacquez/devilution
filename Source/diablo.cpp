@@ -41,9 +41,9 @@ int color_cycle_timer; // weak
 
 /* rdata */
 
-BOOL fullscreen = TRUE;
+BOOL fullscreen = FALSE;
 #ifdef _DEBUG
-int showintrodebug = 1;
+int showintrodebug = 0;
 int questdebug = -1;
 int debug_mode_key_s;
 int debug_mode_key_w;
