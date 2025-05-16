@@ -3,14 +3,13 @@
 #include <stdio.h>
 #include <unistd.h>
 
-
 #include "devilution.h"
 #include "stubs.h"
 
 namespace dvl {
 
 struct memfile {
-	char* path = nullptr;
+	char path[DVL_MAX_PATH]{'\0'};
 	char* buf = nullptr;
 	char* buf_top = nullptr;
 	size_t buf_size = 0;
@@ -26,12 +25,15 @@ HANDLE CreateFileA(LPCSTR lpFileName, DWORD dwDesiredAccess, DWORD dwShareMode,
                    LPSECURITY_ATTRIBUTES lpSecurityAttributes, DWORD dwCreationDisposition,
                    DWORD dwFlagsAndAttributes, HANDLE hTemplateFile)
 {
-	char name[DVL_MAX_PATH];
-	TranslateFileName(name, sizeof(name), lpFileName);
-	DUMMY_PRINT("file: %s (%s)", lpFileName, name);
 	UNIMPLEMENTED_UNLESS(!(dwDesiredAccess & ~(DVL_GENERIC_READ | DVL_GENERIC_WRITE)));
-	memfile* file = new memfile;
-	file->path = name;
+	memfile* file = static_cast<memfile*>(malloc(sizeof(memfile)));
+	// Can't call memfile constructor without depending on using placement new
+	memset(static_cast<void*>(file), 0, sizeof(memfile));
+	assert(file != nullptr);
+
+	TranslateFileName(file->path, sizeof(file->path), lpFileName);
+	DUMMY_PRINT("file: %s (%s)", lpFileName, file->path);
+
 	if (dwCreationDisposition == DVL_OPEN_EXISTING) {
 		// read contents of existing file into buffer
 		FILE* fp = fopen(file->path, "rb");
@@ -176,13 +178,16 @@ WINBOOL CloseHandle(HANDLE hObject)
 
 			if (p_prev == nullptr) {
 				files = p->next;
+
+				if ((files != nullptr) && (files->next == nullptr)) {
+					files_tail = files;
+				}
 			} else {
 				p_prev->next = p->next;
-				free(p);
-			}
 
-			if (p->next == nullptr) {
-				files_tail = p;
+				if (p_prev->next == nullptr) {
+					files_tail = p_prev;
+				}
 			}
 			break;
 		}
@@ -211,6 +216,7 @@ WINBOOL CloseHandle(HANDLE hObject)
 	assert(write_size == file->buf_size);
 
 	free(file->buf_top);
+
 	file->buf_top = nullptr;
 	file->buf = nullptr;
 
